@@ -1,0 +1,522 @@
+Do not skip ahead to later stages. Focus only on Stage 1 unless I explicitly ask for the next stage..
+You are my senior startup engineer, product architect, and technical mentor
+I am a student founder with limited programming experience. I want you to help me build a clean, working MVP for a B2B SaaS platform for insurance data analysts, brokerages, MGAs, underwriting teams, and middle-office data teams.
+
+The product is an AI-powered data intelligence and cleaning platform for insurance datasets. The goal is to allow an analyst to upload multiple datasets, automatically assess dataset quality, identify null-filling opportunities, propose statistically and logically justified fixes, and present all proposed changes to the user in a human-in-the-loop approval workflow with full auditability.
+
+I do NOT want an overengineered enterprise platform yet. I want a realistic MVP that is clean, modular, demoable, and suitable for early customer conversations and a Y Combinator application.
+
+Important architectural requirement:
+Build the backend in a modular way where each major feature is its own Python script/module, and design the data processing layer so PySpark is the primary engine for long-term scale, with a pandas fallback/wrapper for MVP, local development, and small synthetic datasets.
+
+Build the project in clear stages and explain what you are doing as you go.
+
+==================================================
+PRODUCT VISION
+==================================================
+
+The software should:
+
+1. Allow users to upload multiple insurance-related datasets at the same time.
+2. Run a statistical audit on every uploaded dataset and every column.
+3. Produce a Dataset Strength Report with:
+   - a 0 to 100 reliability score
+   - Green / Amber / Red status flags
+   - explanations of why the score was assigned
+4. Detect data quality problems such as:
+   - null values
+   - duplicate rows
+   - duplicate keys
+   - inconsistent formats
+   - date format inconsistencies
+   - text casing inconsistencies
+   - outliers
+   - type mismatches
+   - missing critical insurance fields
+   - entity mismatches
+   - ghost joins
+5. Cross-reference multiple datasets using shared identifiers such as policy number to fill missing values where possible.
+6. Where cross-dataset filling is not possible, apply a logical interpolation / sequence inference engine for structured fields where inference is reasonably justified.
+7. Never silently apply changes. Every proposed change must go through a human-in-the-loop approval interface.
+8. Show original value and proposed value side by side in a diff-style review UI.
+9. Require explicit user approval or rejection for each proposed change.
+10. Maintain a full audit trail of:
+    - the original value
+    - the proposed value
+    - the reason for the proposal
+    - the method used
+    - the confidence score
+    - whether the user approved or rejected it
+    - timestamp of the decision
+11. Export a cleaned dataset after approval.
+12. Generate plain-English AI explanations that help non-technical analysts understand:
+    - dataset health
+    - why certain fields are risky
+    - why certain corrections were proposed
+    - what the analyst should pay attention to
+
+==================================================
+MVP SCOPE
+==================================================
+
+For the MVP, ONLY build these features:
+
+1. Multi-file upload
+   - CSV first
+   - optional Excel support only if simple
+2. Dataset parser and schema detector
+3. Statistical audit engine
+4. Dataset Strength Report
+5. Cross-dataset null resolution using shared keys
+6. Simple temporal / sequence interpolation for suitable numeric or sequential fields
+7. Insurance guardrails for critical fields
+8. Human-in-the-loop review screen
+9. Audit log
+10. Export cleaned CSV
+11. LLM-generated summary report
+
+Do NOT build yet:
+- Databricks integration
+- real-time monitoring
+- alerting
+- on-prem deployment
+- multi-tenant enterprise architecture
+- complex permissions
+- billing
+- production-grade auth
+- advanced chat assistant
+- advanced charts beyond what is needed for MVP
+- fraud engine beyond simple mismatch detection
+
+==================================================
+TARGET USERS
+==================================================
+
+Primary users:
+- insurance pricing analysts
+- underwriters
+- data quality analysts
+- MGA and brokerage operations teams
+- middle-office insurance professionals
+
+Their pain:
+- insurance data arrives messy from multiple systems
+- nulls, mismatches, inconsistent formatting, and broken joins make analysis unreliable
+- they waste time manually cleaning files before any meaningful work can begin
+- they need auditability and confidence before using cleaned data
+
+==================================================
+CORE MVP WORKFLOW
+==================================================
+
+The end-to-end user journey should be:
+
+1. User lands on app
+2. User uploads one or more CSV files
+3. System profiles each dataset and detects columns, types, null percentages, duplicates, and anomalies
+4. System computes a Dataset Strength Report for each dataset and optionally an overall project score
+5. System identifies:
+   - null fill opportunities from other datasets using shared keys
+   - sequence interpolation opportunities
+   - formatting normalisation opportunities
+   - risky fields that should not be null
+   - entity mismatches and possible ghost joins
+6. System generates proposed fixes with:
+   - source method
+   - reason
+   - confidence score
+7. User reviews proposals in a side-by-side approval interface
+8. User accepts or rejects proposals
+9. System logs all decisions
+10. User exports cleaned dataset and audit report
+11. System generates an AI plain-English summary of dataset quality and key risks
+
+==================================================
+DATA QUALITY / ANALYSIS LOGIC
+==================================================
+
+Implement practical, understandable rules for the MVP.
+
+A. Statistical audit per column:
+- inferred data type
+- null count and null percentage
+- uniqueness ratio
+- duplicate frequency
+- min / max / mean / median for numeric columns where applicable
+- standard deviation where applicable
+- outlier detection using a simple robust method
+- invalid date parsing count for date-like columns
+- inconsistent categorical formatting detection
+- high-cardinality field detection
+- suspicious identifier patterns
+
+B. Reliability score (0-100):
+Design a transparent scoring framework.
+Example idea:
+- start at 100
+- subtract points for nulls
+- subtract for duplicates
+- subtract for inconsistent formats
+- subtract for high anomaly rate
+- subtract more heavily for critical insurance field failures
+- map result to:
+  - Green
+  - Amber
+  - Red
+
+Make the scoring modular, configurable, and easy to tune.
+
+C. Cross-dataset resolution:
+- identify joinable fields such as policy_number, customer_id, quote_id, claim_id
+- allow matching across datasets
+- if one dataset has a null and another dataset has a trusted value for the same key, propose that fill
+- log source dataset and key used
+
+D. Sequence / interpolation engine:
+For MVP, keep this conservative and rules-based.
+Only propose interpolation when confidence is high and explainable.
+Examples:
+- missing sequential identifier between two valid neighbouring identifiers
+- date or time sequence gaps where inference is straightforward
+- simple forward/backward fill only when appropriate and clearly justified
+Do NOT hallucinate values.
+Every inferred value must include a reason and confidence score.
+
+E. Insurance-specific guardrails:
+Implement configurable critical fields such as:
+- policy_number
+- premium
+- ncd
+- inception_date
+- expiry_date
+- postcode
+- product_type
+
+If these are null or malformed, flag them heavily in scoring and report them clearly.
+
+F. Entity mismatch detection:
+- where unique identifiers align but supporting fields differ unexpectedly
+- example: same policy_number but inconsistent postcode, name, product type, or premium across datasets
+- flag as possible entity mismatch
+
+G. Ghost join detection:
+- detect likely join errors where datasets appear to join on a key but surrounding attributes strongly suggest mismatch
+- surface these as warnings, not auto-fixes
+
+==================================================
+LLM EXPLANATION LAYER
+==================================================
+
+Use an LLM to generate plain-English summaries for analysts.
+
+The LLM should:
+- summarise dataset health
+- explain main quality issues
+- explain why certain corrections were proposed
+- explain the biggest risks if the analyst uses the data without cleaning
+- describe the meaning of the reliability score
+
+Important:
+- the LLM should NOT invent statistics
+- all LLM outputs must be grounded in computed metrics from the backend
+- pass structured metrics into the prompt
+- use the LLM only for explanation, summarisation, and analyst-facing language
+
+==================================================
+TECH STACK
+==================================================
+
+Use a stack that is realistic for a solo founder with limited experience.
+
+Preferred stack:
+- Backend: Python + FastAPI
+- Data processing:
+  - Primary engine: PySpark
+  - MVP/local fallback: pandas
+  - Numerical/statistical support: numpy, scipy
+  - The system must be designed so processing features can run through either engine
+- Validation / schemas: pydantic
+- Frontend: React + Vite + TypeScript + Tailwind CSS
+- State management: keep simple
+- Database: SQLite for MVP
+- ORM: SQLAlchemy if needed
+- File storage: local filesystem for MVP
+- LLM integration: OpenAI API abstraction layer
+- Charts/tables: use a lightweight React library if needed, but keep UI simple and clean
+
+If needed, you may simplify further to help me ship faster, but do not remove the PySpark-first architecture.
+
+==================================================
+ARCHITECTURE REQUIREMENTS
+==================================================
+
+Create a clean monorepo or clearly separated frontend and backend folders.
+
+Suggested structure:
+- /backend
+- /frontend
+- /docs
+
+Backend should include:
+- API routes
+- core config
+- engine abstraction
+- feature modules
+- models
+- services
+- utilities
+
+Frontend should include:
+- upload page
+- dataset overview page
+- strength report page
+- review / approval page
+- export / report page
+
+==================================================
+BACKEND MODULARITY REQUIREMENTS
+==================================================
+
+I want the backend designed so that each major feature is implemented as a separate Python script or module, rather than placing too much logic into one large service file.
+
+Structure the backend so each feature has its own clearly named Python file. For example:
+- dataset ingestion
+- schema detection
+- profiling
+- scoring
+- null resolution
+- interpolation
+- insurance guardrails
+- entity mismatch detection
+- ghost join detection
+- audit logging
+- export
+- LLM summary generation
+
+Keep the files modular, readable, and beginner-friendly.
+
+Use a structure close to this:
+
+backend/
+  app/
+    api/
+    core/
+    engines/
+      base_engine.py
+      pandas_engine.py
+      spark_engine.py
+      engine_selector.py
+    features/
+      ingest.py
+      schema_detection.py
+      profiling.py
+      scoring.py
+      null_resolution.py
+      interpolation.py
+      guardrails.py
+      entity_mismatch.py
+      ghost_join.py
+      audit_log.py
+      export_cleaned.py
+      llm_summary.py
+    models/
+    services/
+    utils/
+
+Do not create a messy monolithic backend.
+
+==================================================
+DATA PROCESSING ENGINE REQUIREMENTS
+==================================================
+
+I want PySpark to be the main data processing engine for the platform because the long-term product is intended to handle larger datasets and more scalable processing.
+
+However, for MVP and small synthetic datasets, PySpark can be slow or cumbersome. So design the system with an engine abstraction layer.
+
+Requirements:
+1. PySpark should be the primary intended engine.
+2. Add a pandas-based wrapper or fallback engine for MVP, local development, and small files.
+3. The business logic should not depend directly on only one engine.
+4. Create the code so the same feature flow can work with either:
+   - Spark engine
+   - pandas engine
+5. Add a simple configuration setting to choose the engine.
+6. Prefer pandas automatically for small local sample datasets if that makes MVP development easier.
+7. Keep the API response format the same regardless of engine.
+8. Make it easy to migrate more functionality fully to PySpark later.
+
+==================================================
+ENGINE DESIGN
+==================================================
+
+Implement an engine abstraction such as:
+- base processing interface
+- pandas engine implementation
+- spark engine implementation
+
+The feature modules should call the abstraction layer rather than hardcoding pandas or Spark everywhere.
+
+For example:
+- profiling logic should work through a processing interface
+- scoring should consume standardised outputs
+- null resolution should consume standardised outputs
+- export should consume standardised outputs
+
+Where Spark and pandas behaviour differs, document the difference clearly.
+
+For MVP:
+- sample CSV files can use pandas processing by default
+- Spark support should still be scaffolded and integrated properly
+- do not force every small demo file through a heavy Spark startup if it slows development too much
+- create the project so I can later switch to Spark-first processing for production-like workloads
+
+If necessary, use this selection logic:
+- pandas for small files and demo mode
+- Spark for larger files or when explicitly enabled by config
+
+==================================================
+UI REQUIREMENTS
+==================================================
+
+Keep the UI professional, clean, modern, and suitable for insurance/data users.
+
+Pages:
+1. Landing / dashboard
+2. Upload datasets
+3. Profiling results
+4. Dataset Strength Report
+5. Proposed changes review table
+6. Audit log
+7. Export results
+
+UI components should include:
+- file upload area
+- dataset cards
+- score badges
+- flag indicators
+- issue summary tables
+- side-by-side original vs proposed values
+- approve / reject buttons
+- analyst summary panel
+
+==================================================
+AUDITABILITY / COMPLIANCE REQUIREMENTS
+==================================================
+
+The system must preserve a clear audit trail for every proposed fix.
+
+For each proposal store:
+- dataset name
+- row identifier
+- column name
+- original value
+- proposed value
+- proposal type
+- explanation
+- confidence score
+- source method:
+  - cross-dataset lookup
+  - interpolation
+  - normalisation
+  - manual analyst decision
+- user decision
+- created timestamp
+- reviewed timestamp
+
+==================================================
+IMPLEMENTATION STYLE
+==================================================
+
+Important rules:
+- Build the MVP incrementally
+- Do not dump thousands of lines of code at once without explanation
+- After each stage, explain what was built and what remains
+- Prefer readable code over clever code
+- Add comments for beginner clarity
+- Use environment variables properly
+- Create a clear README with setup instructions
+- Include sample seed CSV files for testing
+- Add simple tests for core logic
+- Keep business logic separate from API routes
+- Also separate feature logic into individual Python modules so each major feature is implemented in its own script
+- Design the backend around a processing engine abstraction so PySpark is the main long-term engine and pandas is a local MVP fallback
+- Make the scoring framework configurable
+- Make insurance critical fields configurable
+- Avoid unnecessary abstraction
+- Avoid enterprise complexity
+- Avoid fake placeholder implementations where possible
+- Where a temporary placeholder is necessary, clearly label it
+
+==================================================
+DELIVERABLES I WANT FROM YOU
+==================================================
+
+Please build this project in stages:
+
+Stage 1:
+- scaffold project
+- create backend and frontend structure
+- create README
+- create sample datasets
+- create file upload flow
+- scaffold engine abstraction
+- scaffold pandas engine
+- scaffold spark engine
+- add config-based engine selection
+
+Stage 2:
+- implement dataset profiling and statistics engine
+- implement reliability scoring
+- show results in UI
+
+Stage 3:
+- implement cross-dataset null resolution
+- implement conservative interpolation engine
+- generate proposed changes list
+
+Stage 4:
+- implement human-in-the-loop review interface
+- store approvals and rejections
+- implement audit log
+
+Stage 5:
+- implement export cleaned CSV
+- implement LLM-generated analyst summary
+
+Stage 6:
+- polish UI
+- improve README
+- prepare demo flow
+
+==================================================
+FIRST TASK
+==================================================
+
+Start with Stage 1 only.
+
+Please:
+1. Create the full project folder structure
+2. Scaffold the FastAPI backend
+3. Scaffold the React + Vite + TypeScript frontend
+4. Add Tailwind
+5. Add a basic upload page
+6. Add an API endpoint for CSV upload
+7. Save uploaded files locally for MVP
+8. Add a simple health check endpoint
+9. Add 2 or 3 realistic sample insurance CSV files for testing
+10. Scaffold the engine abstraction layer
+11. Create:
+    - base_engine.py
+    - pandas_engine.py
+    - spark_engine.py
+    - engine_selector.py
+12. Make engine selection configurable
+13. Default to pandas mode for local MVP development
+14. Add a README with exact setup and run steps, including:
+    - how pandas mode works
+    - how Spark mode works
+    - how to switch between them
+    - when to use each
+When you create files, show the full file path and explain why each file exists.
+Before writing code, briefly restate the plan.
+Then implement Stage 1 in a clean, production-sensible MVP way.
