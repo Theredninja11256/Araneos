@@ -1,178 +1,157 @@
-# Data Platform — Insurance Data Intelligence MVP
+# Araneos
 
-AI-powered data intelligence and cleaning platform for insurance datasets.
-Built for pricing analysts, underwriters, MGA/brokerage operations teams,
-and middle-office data professionals.
+**The High-Integrity Data Engine for Insurance Brokers**
 
 ---
 
-## Project Structure
+## Executive summary
+
+Insurance brokers sit on fragmented spreadsheets, policy feeds, and claims files that rarely line up perfectly—**sequence gaps** in identifiers, **silent nulls** that should have been filled from another system, and **no single place** to prove the firm acted in customers’ best interests. **Araneos** is a broker-grade **data health engine** that profiles uploads, scores reliability, proposes **human-reviewed** fixes, and surfaces **joinable intelligence** across datasets.
+
+The backend runs a configurable **processing engine**: **Pandas** for fast local iteration (default), or **PySpark** for distributed, production-scale runs (`ENGINE_MODE=spark`). That stack turns messy CSV/Excel into **audit-ready outputs**—scored datasets, explainable proposals, and export bundles with a **decision manifest**—so leadership can stand behind both **operational quality** and **outcomes-focused oversight** aligned with **FCA Consumer Duty** expectations (clear, fair, not misleading; supporting good customer outcomes through demonstrable controls).
+
+---
+
+## Core capabilities (from the codebase)
+
+
+| Capability                                 | What it does                                                                                                                                                                     |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Dataset profiling**                      | Engine-agnostic column stats, type inference, duplicate detection, and dataset-level issues (`app/features/profiling.py`).                                                       |
+| **Reliability scoring**                    | 0–100 score with Green / Amber / Red grades and per-penalty explanations (`app/features/scoring.py`, `insurance_fields.SCORING_CONFIG`).                                         |
+| **Cross-dataset null resolution**          | Detects join keys and proposes fills when another file in the same session has non-null values (`app/features/null_resolution.py`).                                              |
+| **Conservative sequence & date inference** | Strict rules for annual policy date pairs and sequential identifier gaps—no reckless numeric interpolation between unrelated rows (`app/features/interpolation.py`).             |
+| **Rule-based data corrections**            | Postcode, whitespace, product casing, date standardisation, currency cleaning, premium floors, and related business rules—all as proposals (`app/features/data_corrections.py`). |
+| **Analyst-configurable rules**             | Tunable thresholds (e.g. max NCD) passed with upload (`app/features/analyst_rules.py`).                                                                                          |
+| **Proposal workflow**                      | Pending → approved/rejected with human-in-the-loop review; standard cleaning types can be grouped (`app/features/review.py`, `proposals.py`).                                    |
+| **Session export**                         | ZIP of cleaned CSVs plus **audit_manifest.csv** covering every proposal decision (`app/features/export.py`).                                                                     |
+| **Join intelligence**                      | Pairwise join detection, match-quality signals, rule-based insight catalogue, and aggregation tables for selected insights (`app/features/join_intelligence.py`).                |
+| **CTO dashboard**                          | Executive roll-up of health scores, alerts, join opportunities, trend context, and downloadable HTML report (`app/features/cto_dashboard.py`).                                   |
+| **Analysis pipeline**                      | End-to-end orchestration from upload through profiling, scoring, resolutions, and proposal persistence (`app/features/pipeline.py`).                                             |
+
+
+**Product surface (React):** upload flow, profiling/score results, proposal review, join insights, and the CTO dashboard (`frontend/src/pages`).
+
+---
+
+## Project structure
 
 ```
-/
-├── backend/          FastAPI backend
-├── frontend/         React + Vite + TypeScript + Tailwind frontend
-├── data/samples/     Realistic sample insurance CSV files for testing
-└── docs/             Architecture and design notes (added in later stages)
+Spiderman/
+├── backend/                 # FastAPI service, feature modules, engines, SQLite
+│   ├── main.py              # App factory, CORS, router mount, startup DB init
+│   ├── requirements.txt     # Python dependencies (PySpark installed separately)
+│   ├── uploads/             # Persisted uploads (gitignored data; .gitkeep present)
+│   └── app/
+│       ├── api/routes/      # REST: health, upload, proposals, sessions
+│       ├── core/            # Settings (engine mode, paths) + insurance field config
+│       ├── engines/         # PandasEngine, SparkEngine, engine selector
+│       ├── features/        # Profiling, scoring, null resolution, joins, dashboard, …
+│       ├── models/          # SQLAlchemy models + SQLite engine/session
+│       ├── services/        # Reserved for future service layer
+│       └── utils/           # Shared helpers
+├── data/
+│   └── samples/             # Example broker CSVs (policies, claims, quotes, risk factors)
+├── frontend/                # Vite + React + TypeScript + Tailwind UI
+│   ├── src/
+│   │   ├── api/             # Typed client for `/api/v1`
+│   │   ├── components/      # Tables, workflow, navbar, drop zone, …
+│   │   └── pages/           # Upload, results, proposals, joins, CTO dashboard
+│   ├── vite.config.ts       # Dev server + `/api` proxy to FastAPI
+│   └── tailwind.config.js   # Tailwind CSS configuration
+└── README.md                # This file
 ```
 
+
+| Path                         | One-line purpose                                                         |
+| ---------------------------- | ------------------------------------------------------------------------ |
+| `backend/main.py`            | FastAPI entrypoint and API composition.                                  |
+| `backend/app/api/routes/`    | HTTP handlers for upload, proposals, sessions, health.                   |
+| `backend/app/core/`          | Environment-driven `Settings` and domain constants (`insurance_fields`). |
+| `backend/app/engines/`       | Pluggable **Pandas** vs **PySpark** execution backends.                  |
+| `backend/app/features/`      | Domain logic: profiling, scoring, pipeline, joins, dashboard, export.    |
+| `backend/app/models/`        | ORM models and SQLite `data_platform.db` wiring.                         |
+| `backend/uploads/`           | Stored upload files referenced by session rows.                          |
+| `data/samples/`              | Reference CSVs for local demos and tests.                                |
+| `frontend/src/pages/`        | Routed views for each major workflow stage.                              |
+| `frontend/src/components/`   | Reusable UI for stats, issues, proposals, and navigation.                |
+| `frontend/src/api/client.ts` | API types and fetch helpers for the backend.                             |
+
+
 ---
 
-## Prerequisites
+## Tech stack
 
-| Tool | Version | Notes |
-|---|---|---|
-| Python | 3.11+ | [python.org](https://python.org) |
-| Node.js | 18+ | [nodejs.org](https://nodejs.org) |
-| Java | 11 or 17 | **Only needed for Spark mode** — [Adoptium](https://adoptium.net) |
+
+| Layer           | Technology                                                                                             |
+| --------------- | ------------------------------------------------------------------------------------------------------ |
+| **API**         | **Python 3** · **FastAPI** · **Uvicorn**                                                               |
+| **Data engine** | **Pandas** / **NumPy** / **SciPy** (default) · **PySpark** (optional, `pip install pyspark`, Java 11+) |
+| **Persistence** | **SQLAlchemy** · **SQLite** (`./data_platform.db`)                                                     |
+| **Frontend**    | **React 18** · **TypeScript** · **Vite**                                                               |
+| **Styling**     | **Tailwind CSS**                                                                                       |
+| **Routing**     | **react-router-dom**                                                                                   |
+
 
 ---
 
-## Quick Start
+## The Intelligence Layer (vision)
 
-### 1. Backend
+Today, Araneos emphasises **deterministic**, **explainable** rules and metrics—ideal for regulated workflows. The roadmap extends into an **intelligence layer**:
+
+- **Local LLMs (e.g. Ollama)** for policy-aware natural language explanations, analyst copilots, and assistive drafting—**without** sending client data to opaque third parties when run on-prem or in a controlled VPC.
+- **Swarm-style multi-agent orchestration** to combine specialist evaluators (data quality, pricing fairness signals, join coverage) into **unified market and portfolio insights**—supporting faster, evidence-backed decisions.
+
+The current codebase already separates **engines**, **feature modules**, and **API routes**, so these capabilities can land as additive services without rewriting the core health pipeline.
+
+---
+
+## Getting started
+
+### Prerequisites
+
+- **Python** 3.11+ recommended  
+- **Node.js** 18+ and npm  
+- **Java 11+** (only if enabling PySpark)
+
+### Backend
 
 ```bash
 cd backend
-
-# Create and activate a virtual environment
 python -m venv .venv
-source .venv/bin/activate       # macOS / Linux
-# .venv\Scripts\activate        # Windows
-
-# Install dependencies
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
-# Copy the environment file and edit if needed
-cp .env.example .env
+# Optional: Spark mode for large-scale / distributed processing
+# pip install "pyspark>=3.5.0"
+# echo 'ENGINE_MODE=spark' >> .env
 
-# Run the API server
-uvicorn main:app --reload
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-The API will be available at **http://localhost:8000**.
+- Health check: `GET http://localhost:8000/api/v1/health`  
+- API prefix: `/api/v1` (see `app/core/config.py`)
 
-Swagger docs: **http://localhost:8000/docs**
-
-### 2. Frontend
+### Frontend
 
 ```bash
 cd frontend
-
-# Install dependencies
 npm install
-
-# Start the development server
 npm run dev
 ```
 
-The UI will be available at **http://localhost:5173**.
+Open **[http://localhost:5173](http://localhost:5173)**. The Vite dev server **proxies** `/api` to `http://localhost:8000`, matching the backend CORS setup.
 
-The Vite dev server proxies all `/api/*` requests to the FastAPI backend,
-so no CORS configuration is needed during development.
+### Sample data
 
----
-
-## Engine Modes
-
-The platform is designed around a data processing engine abstraction.
-The same feature logic runs through either engine — only the engine
-implementation differs.
-
-### Pandas mode (default)
-
-Best for: local development, small to medium datasets, rapid iteration.
-
-```env
-# backend/.env
-ENGINE_MODE=pandas
-```
-
-- No extra dependencies beyond `requirements.txt`
-- Fast startup — no JVM overhead
-- Supports datasets up to ~1 million rows comfortably
-
-### Spark mode
-
-Best for: large datasets, production workloads, Databricks environments.
-
-```env
-# backend/.env
-ENGINE_MODE=spark
-```
-
-**Additional setup required:**
-
-1. Install Java 11 or 17 and confirm it is on your PATH:
-   ```bash
-   java -version
-   ```
-
-2. Install PySpark:
-   ```bash
-   pip install pyspark>=3.5.0
-   ```
-
-3. Set `ENGINE_MODE=spark` in `backend/.env` and restart the server.
-
-**Note:** Spark has a JVM startup cost of ~15–20 s on the first request
-when running locally. For rapid iteration on small files, use pandas mode.
-
-### How to switch between engines
-
-Edit `backend/.env`:
-
-```env
-ENGINE_MODE=pandas   # lightweight, default
-ENGINE_MODE=spark    # distributed, production-scale
-```
-
-Restart the backend server after changing this value. The API response
-format is identical regardless of which engine is active — the
-`engine_used` field in the upload response tells you which was used.
+Use the CSVs under `data/samples/` when exercising multi-file sessions (e.g. policies, claims, quotes, risk factors).
 
 ---
 
-## API Reference
+## License & contact
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/v1/health` | Health check — returns status and active engine mode |
-| POST | `/api/v1/datasets/upload` | Upload one or more CSV/Excel files |
+*Add your license and company contact details here as the project matures.*
 
 ---
 
-## Sample Datasets
-
-Three sample files are included in `data/samples/` for testing.
-They contain deliberate quality issues that will be detected in Stage 2.
-
-| File | Rows | Description |
-|---|---|---|
-| `policies.csv` | 25 | Policy records with mixed date formats, inconsistent casing, and null premiums/postcodes |
-| `claims.csv` | 20 | Claims data with null amounts, orphaned policy reference (CLM-020 → POL-026 does not exist) |
-| `quotes.csv` | 20 | Quotes with cross-dataset fill opportunities and entity mismatch (QT-020 has different postcode to POL-020) |
-
-**Intentional quality issues planted for later stages:**
-
-- Mixed date formats: ISO (`2023-01-15`), UK (`15/03/2023`), long-form (`April 5 2023`)
-- Inconsistent product type casing: `Motor`, `motor`, `MOTOR`, `home`, `TRAVEL`
-- Null premiums in `policies.csv` (POL-007, POL-014, POL-024) — fillable from `quotes.csv`
-- Null postcode in `policies.csv` (POL-009, POL-017) — POL-009 fillable from `quotes.csv` (QT-009)
-- Ghost join in `claims.csv`: CLM-020 references POL-026 which does not exist in policies
-- Entity mismatch: POL-020 postcode is `HG1 1BB` but QT-020 postcode is `HG1 2BB`
-- Null NCD in multiple policy rows
-- Null claim amounts and descriptions in `claims.csv`
-
----
-
-## Build Stages
-
-| Stage | Description | Status |
-|---|---|---|
-| **Stage 1** | Project scaffold, upload flow, engine abstraction | ✅ Complete |
-| Stage 2 | Dataset profiling, reliability scoring, UI results | Pending |
-| Stage 3 | Cross-dataset null resolution, interpolation engine | Pending |
-| Stage 4 | Human-in-the-loop review interface, audit log | Pending |
-| Stage 5 | Export cleaned CSV, LLM analyst summary | Pending |
-| Stage 6 | UI polish, demo flow | Pending |
+*Built for brokers who care about defensible data—and leaders who need to prove it.*
